@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-middleend={path="../middleend"}
-common = {path="../common"}
+slynx = {git="https://github.com/Slynx-Language/slynx"}
 swc_ecma_ast = "19.0.0"
 swc_atoms = "9.0.0"
 swc_common = "18.0.1"
