@@ -1,10 +1,11 @@
 use std::path::PathBuf;
+mod compiler;
+mod js;
 
 use clap::Parser;
 use color_eyre::eyre::Result;
-
-use slynx::context::SlynxContext;
-
+pub use compiler::*;
+pub use js::*;
 #[derive(Debug, Parser)]
 struct Cli {
     #[arg(short, long)]
@@ -15,7 +16,6 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
     let path = PathBuf::from(cli.target);
-    let ctx = SlynxContext::new(path.into())?;
-    ctx.start_compilation()?;
+    let _ctx = slynx::compile_to_ir(path)?;
     Ok(())
 }

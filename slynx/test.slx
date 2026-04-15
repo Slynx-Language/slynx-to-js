@@ -1,0 +1,8 @@
+object Pessoa {
+	age: int
+}
+
+func main(): int {
+	let p = Pessoa(age:0);
+	p.age
+}
