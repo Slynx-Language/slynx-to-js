@@ -1,6 +1,6 @@
-use crate::JSBuffer;
+use crate::{JSBuffer, JSFunction};
 use color_eyre::eyre::Result;
-use slynx::middleend::{Context, IRType, SlynxIR};
+use slynx::middleend::{Context, IRType, Label, SlynxIR};
 use std::path::PathBuf;
 
 pub struct JsCompiler {
@@ -30,7 +30,26 @@ impl JsCompiler {
         };
         let ty = types.get_function_type(ty);
 
-        self.buffer.write_function(name, ty.get_args().len() as u8);
-        for label in ir.get_context_labels(ctx) {}
+        let mut func = self.buffer.create_function(name, ty.get_args().len() as u8);
+        let mut label = ir.get_context_labels(ctx).iter();
+
+        if let Some(label) = label.next() {
+            self.compile_entry_label(label, ir, &mut func);
+        }
+
+        for lbl in label {
+            self.compile_label(lbl, ir, &mut func);
+        }
+        self.buffer.append_function(func);
+    }
+
+    pub fn compile_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
+        for instruction in ir.get_label_instructions(lbl) {
+            func.compile_instruction(instruction, lbl, ir);
+        }
+    }
+
+    pub fn compile_entry_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
+        self.compile_label(lbl, ir, func);
     }
 }
