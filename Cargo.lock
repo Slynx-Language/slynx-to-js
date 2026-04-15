@@ -304,7 +304,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#d658bf4ef10f47821088c0b58de026c10c18013b"
+source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#428cb8952a3836c32eeef44a5fc495c92a1747d1"
 dependencies = [
  "rart 0.3.1",
 ]
@@ -387,7 +387,7 @@ dependencies = [
 [[package]]
 name = "frontend"
 version = "0.1.0"
-source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#d658bf4ef10f47821088c0b58de026c10c18013b"
+source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#428cb8952a3836c32eeef44a5fc495c92a1747d1"
 dependencies = [
  "color-eyre",
  "common",
@@ -612,7 +612,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 [[package]]
 name = "middleend"
 version = "0.1.0"
-source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#d658bf4ef10f47821088c0b58de026c10c18013b"
+source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#428cb8952a3836c32eeef44a5fc495c92a1747d1"
 dependencies = [
  "color-eyre",
  "common",
@@ -967,7 +967,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 [[package]]
 name = "slynx"
 version = "0.1.0"
-source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#d658bf4ef10f47821088c0b58de026c10c18013b"
+source = "git+https://github.com/Slynx-Language/slynx?branch=feat%2Fir-component#428cb8952a3836c32eeef44a5fc495c92a1747d1"
 dependencies = [
  "clap",
  "color-eyre",

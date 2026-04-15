@@ -3,6 +3,5 @@ object Pessoa {
 }
 
 func main(a:int, b:int): int {
-	let p = Pessoa(age:0);
-	p.age
+	a + b
 }

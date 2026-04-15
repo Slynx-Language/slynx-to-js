@@ -45,7 +45,8 @@ impl JsCompiler {
 
     pub fn compile_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
         for instruction in ir.get_label_instructions(lbl) {
-            func.compile_instruction(instruction, lbl, ir);
+            let result = func.compile_instruction(instruction, ir);
+            func.append(result);
         }
     }
 
