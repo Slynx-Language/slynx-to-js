@@ -1,6 +1,4 @@
-use std::fmt::format;
-
-use slynx::middleend::{IRPointer, Instruction, InstructionType, Label, Operand, SlynxIR, Value};
+use slynx::middleend::{IRPointer, Instruction, InstructionType, Operand, SlynxIR, Value};
 
 pub struct JSFunction {
     pub content: String,
@@ -33,7 +31,7 @@ impl JSFunction {
                 }
                 Value::FuncArg(n) => self.arguments[*n].clone(),
                 Value::Instruction(ptr) => {
-                    let inst = &ir.get_instructions_by_pointer(ptr.clone().with_length())[0];
+                    let inst = &ir.get_instruction_by_pointer(ptr.clone().with_length())[0];
                     self.compile_instruction(inst, ir)
                 }
                 u => unimplemented!("Not implemented {u:?}"),
@@ -85,10 +83,8 @@ impl JSFunction {
                 let operand = self
                     .compile_values(ir.get_values_by_pointer(instruction.operands.clone()), ir)
                     .join(",");
-
-                format!("return {operand}")
+                format!("return {operand};")
             }
-            InstructionType::Struct => format!(""),
             i => unimplemented!("{i:?}"),
         }
     }
