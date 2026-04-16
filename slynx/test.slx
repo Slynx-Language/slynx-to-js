@@ -2,6 +2,10 @@ object Pessoa {
 	age: int
 }
 
+func f(): str {
+	"maria e jose"
+}
+
 func main(a:int, b:int): int {
 	(a+ b) * a / 4 + 2
 }

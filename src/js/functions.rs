@@ -19,7 +19,7 @@ impl JSFunction {
             Operand::Bool(b) => if *b { "true" } else { "false" }.to_string(),
             Operand::Int(i) => i.to_string(),
             Operand::Float(f) => f.to_string(),
-            Operand::String(_) => unimplemented!(),
+            Operand::String(ptr) => format!("\"{}\"", ir.string_pool().get_name(*ptr)),
         }
     }
 
