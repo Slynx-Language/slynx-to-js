@@ -3,5 +3,5 @@ object Pessoa {
 }
 
 func main(a:int, b:int): int {
-	a + b
+	(a+ b) * a / 4 + 2
 }
