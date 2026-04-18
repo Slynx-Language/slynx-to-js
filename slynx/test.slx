@@ -2,11 +2,13 @@ object Pessoa {
 	age: int
 }
 
-func f(): int {
-	let v = Pessoa(age:5);
+func f(age: int): int {
+	let v = Pessoa(age:age);
+	v.age = v.age + age;
 	v.age
 }
 
 func main(a:int, b:int): int {
-	(a + b) * a / 4 + 2
+	let v = f(5);
+	(a + b) * a / 4 + v
 }
