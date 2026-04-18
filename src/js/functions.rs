@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use slynx::middleend::{IRPointer, Instruction, InstructionType, Operand, SlynxIR, Value};
+use slynx::middleend::{IRPointer, Instruction, InstructionType, Operand, Slot, SlynxIR, Value};
 
 pub struct JSFunction {
     pub content: String,
     arguments: Vec<String>,
-    variables: HashMap<IRPointer<Instruction, 1>, String>,
+    variables: HashMap<IRPointer<Slot, 1>, String>,
 }
 
 impl JSFunction {
@@ -67,6 +67,14 @@ impl JSFunction {
         out
     }
 
+    ///Compiles an allocation that maps to the given `slot`, and maps the name of the variable to it
+    pub fn compile_allocation(&mut self, slot: IRPointer<Slot, 1>) -> String {
+        let variable_name = format!("v{}", self.variables.len() + 1);
+        let out = format!("let {variable_name};");
+        self.variables.insert(slot, variable_name);
+        out
+    }
+
     ///Compiles the a struct with the given `values`. The fields are named as `fN` where `N` is the index of the value, and thus, the field
     pub fn compile_struct(&mut self, values: IRPointer<Value, 0>, ir: &SlynxIR) -> String {
         let values = ir.get_values_by_pointer(values);
@@ -88,6 +96,7 @@ impl JSFunction {
                 let values = self.compile_values(values, ir);
                 values.join(",")
             }
+            InstructionType::Allocate(slot) => self.compile_allocation(*slot),
             InstructionType::Add => self.compile_binary(instruction.operands.clone(), "+", ir),
             InstructionType::Sub => self.compile_binary(instruction.operands.clone(), "-", ir),
             InstructionType::Mul => self.compile_binary(instruction.operands.clone(), "*", ir),

@@ -2,8 +2,9 @@ object Pessoa {
 	age: int
 }
 
-func f(): Pessoa{
-	Pessoa(age:5)
+func f(): int {
+	let v = Pessoa(age:5);
+	v.age
 }
 
 func main(a:int, b:int): int {
