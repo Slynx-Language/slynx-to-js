@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, primitive};
 
 use slynx::middleend::{IRPointer, Instruction, InstructionType, Operand, Slot, SlynxIR, Value};
 
@@ -100,7 +100,7 @@ impl JSFunction {
             .map(|(idx, value)| format!("f{idx}: {value}"))
             .collect::<Vec<_>>()
             .join(",");
-        return format!("{{{values}}}");
+        format!("{{{values}}}")
     }
 
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
@@ -121,6 +121,13 @@ impl JSFunction {
                 let v = self.compile_values(values, ir);
                 format!("{}.f{f}", v[0])
             }
+            InstructionType::SetField(f) => {
+                let values = ir.get_values_by_pointer(instruction.operands);
+                assert!(values.len() == 2);
+                let v = self.compile_values(values, ir);
+                format!("{}.f{f} = {};", v[0], v[1])
+            }
+
             InstructionType::Add => self.compile_binary(instruction.operands.clone(), "+", ir),
             InstructionType::Sub => self.compile_binary(instruction.operands.clone(), "-", ir),
             InstructionType::Mul => self.compile_binary(instruction.operands.clone(), "*", ir),
@@ -143,7 +150,14 @@ impl JSFunction {
                     .join(",");
                 format!("return {operand};")
             }
-            i => unimplemented!("{i:?}"),
+            InstructionType::FunctionCall(ctx) => {
+                let ctx = &ir.contexts()[ctx.ptr()];
+                let name = ir.string_pool().get_name(ctx.name());
+                let args = ir.get_values_by_pointer(instruction.operands);
+                let args = self.compile_values(args, ir).join(",");
+                format!("{}({})", name, args)
+            }
+            _ => unimplemented!(),
         }
     }
 
