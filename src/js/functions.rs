@@ -40,6 +40,7 @@ impl JSFunction {
                     let inst = &ir.get_instruction_by_pointer(ptr.clone().with_length())[0];
                     self.compile_instruction(inst, ir)
                 }
+                Value::Slot(s) => self.variables.get(s).cloned().unwrap(),
                 u => unimplemented!("Not implemented {u:?}"),
             };
             out.push(v);
@@ -75,6 +76,20 @@ impl JSFunction {
         out
     }
 
+    pub fn compile_write(
+        &mut self,
+        slot: IRPointer<Slot, 1>,
+        value: IRPointer<Value, 0>,
+        ir: &SlynxIR,
+    ) -> String {
+        debug_assert!(self.variables.contains_key(&slot));
+        let values = ir.get_values_by_pointer(value);
+        debug_assert!(value.len() == 1);
+        let value = self.compile_values(values, ir);
+        let variable = self.variables.get(&slot).unwrap();
+        format!("{variable} = {};", &value[0])
+    }
+
     ///Compiles the a struct with the given `values`. The fields are named as `fN` where `N` is the index of the value, and thus, the field
     pub fn compile_struct(&mut self, values: IRPointer<Value, 0>, ir: &SlynxIR) -> String {
         let values = ir.get_values_by_pointer(values);
@@ -97,6 +112,15 @@ impl JSFunction {
                 values.join(",")
             }
             InstructionType::Allocate(slot) => self.compile_allocation(*slot),
+            InstructionType::Write(slot) => {
+                self.compile_write(slot.clone(), instruction.operands, ir)
+            }
+            InstructionType::GetField(f) => {
+                let values = ir.get_values_by_pointer(instruction.operands);
+                assert!(values.len() == 1);
+                let v = self.compile_values(values, ir);
+                format!("{}.f{f}", v[0])
+            }
             InstructionType::Add => self.compile_binary(instruction.operands.clone(), "+", ir),
             InstructionType::Sub => self.compile_binary(instruction.operands.clone(), "-", ir),
             InstructionType::Mul => self.compile_binary(instruction.operands.clone(), "*", ir),
