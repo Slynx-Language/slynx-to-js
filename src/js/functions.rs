@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use slynx::middleend::{IRPointer, Instruction, InstructionType, Operand, SlynxIR, Value};
 
 pub struct JSFunction {
     pub content: String,
     arguments: Vec<String>,
+    variables: HashMap<IRPointer<Instruction, 1>, String>,
 }
 
 impl JSFunction {
@@ -10,6 +13,7 @@ impl JSFunction {
         Self {
             content: initial_content,
             arguments,
+            variables: HashMap::new(),
         }
     }
 
@@ -63,6 +67,19 @@ impl JSFunction {
         out
     }
 
+    ///Compiles the a struct with the given `values`. The fields are named as `fN` where `N` is the index of the value, and thus, the field
+    pub fn compile_struct(&mut self, values: IRPointer<Value, 0>, ir: &SlynxIR) -> String {
+        let values = ir.get_values_by_pointer(values);
+        let values = self
+            .compile_values(values, ir)
+            .into_iter()
+            .enumerate()
+            .map(|(idx, value)| format!("f{idx}: {value}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        return format!("{{{values}}}");
+    }
+
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     pub fn compile_instruction(&mut self, instruction: &Instruction, ir: &SlynxIR) -> String {
         match &instruction.instruction_type {
@@ -86,6 +103,7 @@ impl JSFunction {
             InstructionType::Shr => self.compile_binary(instruction.operands.clone(), ">>", ir),
             InstructionType::AShr => self.compile_binary(instruction.operands.clone(), ">>>", ir),
             InstructionType::Shl => self.compile_binary(instruction.operands.clone(), "<<", ir),
+            InstructionType::Struct => self.compile_struct(instruction.operands, ir),
             InstructionType::Ret => {
                 let operand = self
                     .compile_values(ir.get_values_by_pointer(instruction.operands.clone()), ir)
@@ -103,7 +121,7 @@ impl JSFunction {
 
     ///Finishes this function and returns its contents
     pub fn finish(mut self) -> String {
-        self.content.push('}');
+        self.content.push_str("}\n");
         self.content
     }
 }

@@ -2,10 +2,10 @@ object Pessoa {
 	age: int
 }
 
-func f(): str {
-	"maria e jose"
+func f(): Pessoa{
+	Pessoa(age:5)
 }
 
 func main(a:int, b:int): int {
-	(a+ b) * a / 4 + 2
+	(a + b) * a / 4 + 2
 }

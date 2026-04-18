@@ -15,6 +15,7 @@ impl JSBuffer {
     pub fn create_function(&self, name: &str, param_quantity: u8) -> JSFunction {
         let args_vec: Vec<String> = (0..param_quantity).map(|p| format!("p{p}")).collect();
         let args = args_vec.join(",");
+
         JSFunction::new(format!("function {name}({args}){{"), args_vec)
     }
 
