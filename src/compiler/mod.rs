@@ -1,6 +1,6 @@
 use crate::{JSBuffer, JSFunction};
 use color_eyre::eyre::Result;
-use slynx::middleend::{Context, IRType, Label, SlynxIR};
+use slynx::middleend::{Context, IRPointer, IRType, Label, SlynxIR};
 use std::path::PathBuf;
 
 pub struct JsCompiler {
@@ -40,11 +40,13 @@ impl JsCompiler {
         for lbl in label {
             self.compile_label(lbl, ir, &mut func);
         }
+
         self.buffer.append_function(func);
     }
 
     pub fn compile_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
         let all_instructions = ir.get_label_instructions(lbl);
+
         for instructions in all_instructions {
             for instruction in instructions {
                 let result = func.compile_instruction(instruction, ir);
