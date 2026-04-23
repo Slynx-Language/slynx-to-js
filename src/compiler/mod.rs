@@ -1,6 +1,6 @@
-use crate::{JSBuffer, JSFunction};
+use crate::{InstructionCompiler, JSBuffer, JSComponent, JSFunction};
 use color_eyre::eyre::Result;
-use slynx::middleend::{Context, IRPointer, IRType, Label, SlynxIR};
+use slynx::middleend::{Component, Context, IRType, Label, SlynxIR};
 use std::path::PathBuf;
 
 pub struct JsCompiler {
@@ -15,6 +15,9 @@ impl JsCompiler {
 
         for ctx in ir.contexts() {
             s.compile_context(ctx, &ir);
+        }
+        for comp in ir.components() {
+            s.compile_component(comp, &ir);
         }
 
         std::fs::write(path, &s.buffer.content)?;
@@ -42,6 +45,17 @@ impl JsCompiler {
         }
 
         self.buffer.append_function(func);
+    }
+    pub fn compile_component(&mut self, component: &Component, ir: &SlynxIR) {
+        let ty = component.ir_type();
+        let types = ir.ir_types();
+        let IRType::Component(component_id) = types.get_type(ty) else {
+            unreachable!("Type of component should be an ir component");
+        };
+        let component_type = types.get_component_type(component_id);
+        let mut js_component = JSComponent::new(ir.string_pool().get_name(component_type.name()));
+        js_component.compile(component_type.fields(), component.values(), ir);
+        self.buffer.append_component(js_component);
     }
 
     pub fn compile_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
