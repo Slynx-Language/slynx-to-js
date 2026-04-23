@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+mod cfg;
 mod compiler;
 mod js;
 

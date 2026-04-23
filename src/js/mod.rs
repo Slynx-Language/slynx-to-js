@@ -23,7 +23,7 @@ impl JSBuffer {
         let args_vec: Vec<String> = (0..param_quantity).map(|p| format!("p{p}")).collect();
         let args = args_vec.join(",");
 
-        JSFunction::new(format!("function {name}({args}){{"), args_vec)
+        JSFunction::new(format!("function {name}({args}){{\n"), args_vec)
     }
 
     pub fn append_function(&mut self, func: JSFunction) {
@@ -81,10 +81,11 @@ pub trait InstructionCompiler {
         out.push_str(operator);
         out.push_str(&values[1]);
         out.push(')');
+        out.push('\n');
         out
     }
     ///Compiles the a struct with the given `values`. The fields are named as `fN` where `N` is the index of the value, and thus, the field
-    fn compile_struct(&mut self, values: IRPointer<Value, 0>, ir: &SlynxIR) -> String {
+    fn compile_struct_expression(&mut self, values: IRPointer<Value, 0>, ir: &SlynxIR) -> String {
         let values = ir.get_values_by_pointer(values);
         let values = self
             .compile_values(values, ir)
@@ -99,7 +100,7 @@ pub trait InstructionCompiler {
     ///Compiles an allocation that maps to the given `slot`, and maps the name of the variable to it
     fn compile_allocation(&mut self, slot: IRPointer<Slot, 1>) -> String {
         let variable_name = format!("v{}", self.variables().len() + 1);
-        let out = format!("let {variable_name};");
+        let out = format!("let {variable_name};\n");
         self.variables_mut().insert(slot, variable_name);
         out
     }
@@ -115,7 +116,7 @@ pub trait InstructionCompiler {
         debug_assert!(value.len() == 1);
         let value = self.compile_values(values, ir);
         let variable = self.variables().get(&slot).unwrap();
-        format!("{variable} = {};", &value[0])
+        format!("{variable} = {};\n", &value[0])
     }
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     fn compile_instruction(&mut self, instruction: &Instruction, ir: &SlynxIR) -> String {
@@ -139,7 +140,7 @@ pub trait InstructionCompiler {
                 let values = ir.get_values_by_pointer(instruction.operands);
                 assert!(values.len() == 2);
                 let v = self.compile_values(values, ir);
-                format!("{}.f{f} = {};", v[0], v[1])
+                format!("{}.f{f} = {};\n", v[0], v[1])
             }
             InstructionType::Read => {
                 let values = ir.get_values_by_pointer(instruction.operands);
@@ -162,7 +163,7 @@ pub trait InstructionCompiler {
             InstructionType::Shr => self.compile_binary(instruction.operands.clone(), ">>", ir),
             InstructionType::AShr => self.compile_binary(instruction.operands.clone(), ">>>", ir),
             InstructionType::Shl => self.compile_binary(instruction.operands.clone(), "<<", ir),
-            InstructionType::Struct => self.compile_struct(instruction.operands, ir),
+            InstructionType::Struct => self.compile_struct_expression(instruction.operands, ir),
             InstructionType::Ret => {
                 let operand = self
                     .compile_values(ir.get_values_by_pointer(instruction.operands.clone()), ir)
@@ -182,15 +183,13 @@ pub trait InstructionCompiler {
                     unreachable!("Expected type of component instruction to be a component")
                 };
                 let component = ir.ir_types().get_component_type(component_id);
-                ir.string_pool().get_name(component.name()).to_string()
+                let name = ir.string_pool().get_name(component.name());
+                let operands =
+                    self.compile_values(ir.get_values_by_pointer(instruction.operands), ir);
+                format!("{name}({})", operands.join(","))
             }
             InstructionType::Br(_) => "".to_string(),
-            InstructionType::Cbr {
-                then_label,
-                else_label,
-                then_args,
-                else_args,
-            } => "".to_string(),
+            InstructionType::Cbr { .. } => "".to_string(),
             InstructionType::Reinterpret => "".to_string(),
         }
     }
