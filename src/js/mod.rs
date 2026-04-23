@@ -81,7 +81,6 @@ pub trait InstructionCompiler {
         out.push_str(operator);
         out.push_str(&values[1]);
         out.push(')');
-        out.push('\n');
         out
     }
     ///Compiles the a struct with the given `values`. The fields are named as `fN` where `N` is the index of the value, and thus, the field

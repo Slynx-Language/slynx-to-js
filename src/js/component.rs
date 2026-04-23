@@ -57,8 +57,6 @@ impl JSComponent {
             .join(",");
         self.buffer
             .push_str(&format!("return {{{ret_fields}}};\n",));
-
-        self.buffer.push('}');
     }
 
     fn compile_child(&mut self, value: &Value, var_name: &str, ir: &SlynxIR, params: &[String]) {

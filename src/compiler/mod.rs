@@ -221,7 +221,7 @@ impl JsCompiler {
                 }
             }
 
-            func.append("else {\n".to_string());
+            func.append("}else {\n".to_string());
 
             // In else block: assign if there are args for the merge
             if !else_args.is_empty() {

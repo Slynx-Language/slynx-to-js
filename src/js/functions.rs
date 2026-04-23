@@ -38,7 +38,7 @@ impl JSFunction {
 
     ///Finishes this function and returns its contents
     pub fn finish(mut self) -> String {
-        self.content.push_str("}\n");
+        self.content.push_str("\n}\n");
         self.content
     }
 }
