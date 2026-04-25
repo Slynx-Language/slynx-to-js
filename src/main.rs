@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-mod cfg;
 mod compiler;
 mod js;
 
@@ -19,8 +18,8 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
     let path = PathBuf::from(cli.target);
-    let ctx = slynx::compile_to_ir(path)?;
+    let ir = slynx::compile_to_ir(path)?;
     let output = PathBuf::from(cli.output);
-    JsCompiler::compile(ctx, output)?;
+    JsCompiler::compile(ir, output)?;
     Ok(())
 }

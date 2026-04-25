@@ -9,12 +9,14 @@ let v1;
 v1 = Abc(12);
 let v2;
 v2 = f(p0);
-if ((v2>12)) {
 let v3;
-else {
-let v4;
+if((v2>12)){
+v4 = 10;
+} else {
+v4 = 10;
 }
-
+v3 = v4;
+return ((((p0+p1)*p0)/4)+v2);
 }
 function Abc(p0){
 let c1 = document.createElement("p");

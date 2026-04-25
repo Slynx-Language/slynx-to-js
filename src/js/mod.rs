@@ -38,6 +38,9 @@ pub trait InstructionCompiler {
     fn arguments(&self) -> &Vec<String>;
     fn variables(&self) -> &HashMap<IRPointer<Slot, 1>, String>;
     fn variables_mut(&mut self) -> &mut HashMap<IRPointer<Slot, 1>, String>;
+    fn resolve_label_arg(&self, _index: usize) -> String {
+        unimplemented!("LabelArg not supported in this context")
+    }
     ///Compiles the given `raw` operand. Operands are primitives
     fn compile_raw(&mut self, raw: &Operand, ir: &SlynxIR) -> String {
         match raw {
@@ -62,6 +65,7 @@ pub trait InstructionCompiler {
                     self.compile_instruction(inst, ir)
                 }
                 Value::Slot(s) => self.variables().get(s).cloned().unwrap(),
+                Value::LabelArg(i) => self.resolve_label_arg(*i),
                 u => unimplemented!("Not implemented {u:?}"),
             };
             out.push(v);
