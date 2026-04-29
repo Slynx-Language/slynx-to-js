@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::js::InstructionCompiler;
-use slynx::middleend::ir::{Instruction, InstructionType, Operand, Value};
-use slynx::middleend::{IRPointer, IRSpecializedComponent, IRType, IRTypeId, Slot, SlynxIR};
+use slynx::middleend::ir::Value;
+use slynx::middleend::{IRPointer, IRSpecializedComponent, IRTypeId, Slot, SlynxIR};
 
 pub struct JSComponent {
     name: String,
