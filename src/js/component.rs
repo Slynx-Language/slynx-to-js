@@ -75,7 +75,7 @@ impl JSComponent {
     }
 
     fn compile_child(&mut self, value: &Value, var_name: &str, ir: &SlynxIR, params: &[String]) {
-        match value {
+        let out = match value {
             Value::Specliazed(ptr) => {
                 let spec = ir.get_specialized(ptr.clone());
                 match spec {
@@ -83,38 +83,32 @@ impl JSComponent {
                         let v_vals = ir.get_values_by_pointer(v.with_length::<0>());
                         assert_eq!(v_vals.len(), 1);
                         let expr = self.compile_values(v_vals, ir);
-                        self.buffer.push_str(
-                            &self.ident(format!(
-                                "let {var_name} = document.createElement(\"p\");\n",
-                            )),
-                        );
-
-                        self.buffer.push_str(
-                            &self.ident(format!("{var_name}.textContent = {};\n", expr[0])),
-                        );
+                        format!(
+                            "let {var_name} = document.createElement(\"p\");\n {}",
+                            self.ident(format!("{var_name}.textContent = {};\n", expr[0])),
+                        )
                     }
                     IRSpecializedComponent::Div(children_vals) => {
-                        self.buffer.push_str(&self.ident(format!(
-                            "let {} = document.createElement(\"div\");\n",
-                            var_name
-                        )));
+                        let mut out =
+                            format!("let {} = document.createElement(\"div\");\n", var_name);
                         let child_vals = ir.get_values_by_pointer(children_vals.clone());
                         for (i, child_val) in child_vals.iter().enumerate() {
                             let child_var = format!("{var_name}_c{}", i + 1);
                             self.compile_child(child_val, &child_var, ir, params);
-                            self.buffer.push_str(
+                            out.push_str(
                                 &self.ident(format!("{var_name}.appendChild({child_var});\n")),
-                            );
+                            )
                         }
+                        out
                     }
                 }
             }
             _ => {
                 let expr = self.compile_values(&[value.clone()], ir);
-                self.buffer
-                    .push_str(&self.ident(format!("let {var_name} = {};\n", expr[0])));
+                format!("let {var_name} = {};\n", expr[0])
             }
-        }
+        };
+        self.buffer.push_str(&self.ident(out));
     }
 
     pub fn finish(mut self) -> String {
