@@ -1,3 +1,10 @@
+component Abc {
+	pub prop value: int;
+	Text {
+		text: "maria"
+	}
+}
+
 object Pessoa {
 	age: int
 }
@@ -9,6 +16,12 @@ func f(age: int): int {
 }
 
 func main(a:int, b:int): int {
+	let q = Abc {value: 12};
 	let v = f(5);
-	(a + b) * a / 4 + v
+	let qj = if v > 12 {
+		10
+	}else {
+		20
+	};
+	(a + b) * a / 4 + v - qj
 }

@@ -1,6 +1,9 @@
-use crate::{JSBuffer, JSFunction};
+use crate::{JSBuffer, JSComponent};
 use color_eyre::eyre::Result;
-use slynx::middleend::{Context, IRPointer, IRType, Label, SlynxIR};
+use slynx::middleend::{
+    IRType,
+    ir::{Context, SlynxIR},
+};
 use std::path::PathBuf;
 
 pub struct JsCompiler {
@@ -15,6 +18,10 @@ impl JsCompiler {
 
         for ctx in ir.contexts() {
             s.compile_context(ctx, &ir);
+            println!("Gay");
+        }
+        for comp in ir.components() {
+            s.compile_component(comp, &ir);
         }
 
         std::fs::write(path, &s.buffer.content)?;
@@ -31,31 +38,20 @@ impl JsCompiler {
         let ty = types.get_function_type(ty);
 
         let mut func = self.buffer.create_function(name, ty.get_args().len() as u8);
-        let mut label = ir.get_context_labels(ctx).iter();
-
-        if let Some(label) = label.next() {
-            self.compile_entry_label(label, ir, &mut func);
-        }
-
-        for lbl in label {
-            self.compile_label(lbl, ir, &mut func);
-        }
-
+        let cfg = ir.generate_context_cfg(ctx);
+        func.compile_from_cfg(&cfg, ir);
         self.buffer.append_function(func);
     }
 
-    pub fn compile_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
-        let all_instructions = ir.get_label_instructions(lbl);
-
-        for instructions in all_instructions {
-            for instruction in instructions {
-                let result = func.compile_instruction(instruction, ir);
-                func.append(result);
-            }
-        }
-    }
-
-    pub fn compile_entry_label(&mut self, lbl: &Label, ir: &SlynxIR, func: &mut JSFunction) {
-        self.compile_label(lbl, ir, func);
+    pub fn compile_component(&mut self, component: &slynx::middleend::Component, ir: &SlynxIR) {
+        let ty = component.ir_type();
+        let types = ir.ir_types();
+        let IRType::Component(component_id) = types.get_type(ty) else {
+            unreachable!("Type of component should be an ir component");
+        };
+        let component_type = types.get_component_type(component_id);
+        let mut js_component = JSComponent::new(ir.string_pool().get_name(component_type.name()));
+        js_component.compile(component_type.fields(), component.values(), ir);
+        self.buffer.append_component(js_component);
     }
 }
