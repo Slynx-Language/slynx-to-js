@@ -56,6 +56,7 @@ impl JSComponent {
         self.buffer.push_str(&format!("function {}(", self.name));
         self.buffer.push_str(&params.join(","));
         self.buffer.push_str("){\n");
+        self.increase_identation();
 
         let children_vals = ir.get_values_by_pointer(children);
 
@@ -70,7 +71,7 @@ impl JSComponent {
             .collect::<Vec<_>>()
             .join(",");
         self.buffer
-            .push_str(&format!("return {{{ret_fields}}};\n",));
+            .push_str(&self.ident(format!("return {{{ret_fields}}};\n",)));
     }
 
     fn compile_child(&mut self, value: &Value, var_name: &str, ir: &SlynxIR, params: &[String]) {
@@ -82,25 +83,28 @@ impl JSComponent {
                         let v_vals = ir.get_values_by_pointer(v.with_length::<0>());
                         assert_eq!(v_vals.len(), 1);
                         let expr = self.compile_values(v_vals, ir);
-                        self.buffer.push_str(&format!(
-                            "let {} = document.createElement(\"p\");\n",
-                            var_name
-                        ));
+                        self.buffer.push_str(
+                            &self.ident(format!(
+                                "let {var_name} = document.createElement(\"p\");\n",
+                            )),
+                        );
 
-                        self.buffer
-                            .push_str(&format!("{}.textContent = {};\n", var_name, expr[0]));
+                        self.buffer.push_str(
+                            &self.ident(format!("{var_name}.textContent = {};\n", expr[0])),
+                        );
                     }
                     IRSpecializedComponent::Div(children_vals) => {
-                        self.buffer.push_str(&format!(
+                        self.buffer.push_str(&self.ident(format!(
                             "let {} = document.createElement(\"div\");\n",
                             var_name
-                        ));
+                        )));
                         let child_vals = ir.get_values_by_pointer(children_vals.clone());
                         for (i, child_val) in child_vals.iter().enumerate() {
-                            let child_var = format!("{}_c{}", var_name, i + 1);
+                            let child_var = format!("{var_name}_c{}", i + 1);
                             self.compile_child(child_val, &child_var, ir, params);
-                            self.buffer
-                                .push_str(&format!("{}.appendChild({});\n", var_name, child_var));
+                            self.buffer.push_str(
+                                &self.ident(format!("{var_name}.appendChild({child_var});\n")),
+                            );
                         }
                     }
                 }
@@ -108,7 +112,7 @@ impl JSComponent {
             _ => {
                 let expr = self.compile_values(&[value.clone()], ir);
                 self.buffer
-                    .push_str(&format!("let {} = {};\n", var_name, expr[0]));
+                    .push_str(&self.ident(format!("let {var_name} = {};\n", expr[0])));
             }
         }
     }
