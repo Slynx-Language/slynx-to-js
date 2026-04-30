@@ -10,6 +10,7 @@ function main(p0,p1){
     let v2;
     v2 = f(p0);
     let v3;
+    let v4;
     if((v2>12)){
         v4 = 10;
     } else {

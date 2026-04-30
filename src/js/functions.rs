@@ -135,7 +135,8 @@ impl JSFunction {
                         if !self.label_args.contains_key(&(end_ptr, i)) {
                             let var_name =
                                 format!("v{}", self.variables.len() + self.label_args.len() + 1);
-
+                            let decl = self.ident(format!("let {var_name};\n"));
+                            self.content.push_str(&decl);
                             self.label_args.insert((end_ptr, i), var_name);
                         }
                     }
