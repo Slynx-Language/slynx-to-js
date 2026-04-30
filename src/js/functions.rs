@@ -14,9 +14,19 @@ pub struct JSFunction {
     label_args: HashMap<(IRPointer<Label, 1>, usize), String>,
     /// The label currently being compiled, needed to resolve LabelArg values
     current_label: Option<IRPointer<Label, 1>>,
+    identation: usize,
 }
 
 impl InstructionCompiler for JSFunction {
+    fn identation_value(&self) -> usize {
+        self.identation
+    }
+    fn increase_identation(&mut self) {
+        self.identation += 1;
+    }
+    fn decrease_identation(&mut self) {
+        self.identation -= 1;
+    }
     fn arguments(&self) -> &Vec<String> {
         &self.arguments
     }
@@ -43,6 +53,7 @@ impl JSFunction {
             variables: HashMap::new(),
             label_args: HashMap::new(),
             current_label: None,
+            identation: 1,
         }
     }
 
@@ -91,7 +102,7 @@ impl JSFunction {
         match &term.instruction_type {
             InstructionType::Ret => {
                 let s = self.compile_instruction(term, ir);
-                self.content.push_str(&s);
+                self.content.push_str(&self.ident(s));
             }
             InstructionType::Br(target_ptr) => {
                 let target_label = ir.get_label(*target_ptr);
@@ -104,7 +115,8 @@ impl JSFunction {
                             .get(&(*target_ptr, i))
                             .cloned()
                             .unwrap_or_else(|| panic!("label arg var not allocated"));
-                        self.content.push_str(&format!("{var} = {val};\n"));
+                        self.content
+                            .push_str(&self.ident(format!("{var} = {val};\n")));
                     }
                 }
             }
@@ -117,7 +129,6 @@ impl JSFunction {
                 let then_node = mappings[then_label];
                 let else_node = mappings[else_label];
 
-                // Allocate JS vars for end_label arguments before the if block
                 if let Some(end_ptr) = self.find_end_label(then_node, else_node, cfg, ir) {
                     let end_label = ir.get_label(end_ptr);
                     for i in 0..end_label.arguments().len() {
@@ -135,15 +146,20 @@ impl JSFunction {
                 self.current_label = Some(label_ptr);
                 let cond = self.compile_values(cond_vals, ir).remove(0);
 
-                self.content.push_str(&format!("if({cond}){{\n"));
+                self.content
+                    .push_str(&self.ident(format!("if({cond}){{\n")));
+                self.increase_identation();
                 self.emit_node(then_node, cfg, ir, emitted);
-                self.content.push_str("} else {\n");
+                self.decrease_identation();
+                self.content.push_str(&self.ident("} else {\n".to_string()));
+                self.increase_identation();
                 self.emit_node(else_node, cfg, ir, emitted);
-                self.content.push_str("}\n");
+                self.decrease_identation();
+                self.content.push_str(&self.ident("}\n".to_string()));
             }
             _ => {
                 let s = self.compile_instruction(term, ir);
-                self.content.push_str(&s);
+                self.content.push_str(&self.ident(s));
             }
         }
     }

@@ -35,6 +35,21 @@ impl JSBuffer {
 }
 
 pub trait InstructionCompiler {
+    fn identation_multiplier() -> usize {
+        4
+    }
+    fn identation_value(&self) -> usize;
+    fn increase_identation(&mut self);
+    fn decrease_identation(&mut self);
+    fn identation_string(&self) -> String {
+        " ".repeat(Self::identation_multiplier() * self.identation_value())
+    }
+    fn ident(&self, name: String) -> String {
+        format!(
+            "{}{name}",
+            " ".repeat(Self::identation_multiplier() * self.identation_value())
+        )
+    }
     fn arguments(&self) -> &Vec<String>;
     fn variables(&self) -> &HashMap<IRPointer<Slot, 1>, String>;
     fn variables_mut(&mut self) -> &mut HashMap<IRPointer<Slot, 1>, String>;
@@ -105,7 +120,7 @@ pub trait InstructionCompiler {
         let variable_name = format!("v{}", self.variables().len() + 1);
         let out = format!("let {variable_name};\n");
         self.variables_mut().insert(slot, variable_name);
-        out
+        self.ident(out)
     }
 
     fn compile_write(
@@ -119,7 +134,7 @@ pub trait InstructionCompiler {
         debug_assert!(value.len() == 1);
         let value = self.compile_values(values, ir);
         let variable = self.variables().get(&slot).unwrap();
-        format!("{variable} = {};\n", &value[0])
+        self.ident(format!("{variable} = {};\n", &value[0]))
     }
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     fn compile_instruction(&mut self, instruction: &Instruction, ir: &SlynxIR) -> String {
@@ -143,7 +158,7 @@ pub trait InstructionCompiler {
                 let values = ir.get_values_by_pointer(instruction.operands);
                 assert!(values.len() == 2);
                 let v = self.compile_values(values, ir);
-                format!("{}.f{f} = {};\n", v[0], v[1])
+                self.ident(format!("{}.f{f} = {};\n", v[0], v[1]))
             }
             InstructionType::Read => {
                 let values = ir.get_values_by_pointer(instruction.operands);

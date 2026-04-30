@@ -9,9 +9,22 @@ pub struct JSComponent {
     buffer: String,
     variables: HashMap<IRPointer<Slot, 1>, String>,
     arguments: Vec<String>,
+    identation: usize,
 }
 
 impl InstructionCompiler for JSComponent {
+    fn identation_value(&self) -> usize {
+        self.identation
+    }
+
+    fn increase_identation(&mut self) {
+        self.identation += 1;
+    }
+
+    fn decrease_identation(&mut self) {
+        self.identation -= 1;
+    }
+
     fn arguments(&self) -> &Vec<String> {
         &self.arguments
     }
@@ -34,6 +47,7 @@ impl JSComponent {
             buffer: String::new(),
             arguments: Vec::new(),
             variables: HashMap::new(),
+            identation: 0,
         }
     }
 

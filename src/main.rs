@@ -19,7 +19,6 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let path = PathBuf::from(cli.target);
     let ir = slynx::compile_to_ir(path)?;
-    println!("{}", ir.format_sir());
     let output = PathBuf::from(cli.output);
     JsCompiler::compile(ir, output)?;
 
