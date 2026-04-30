@@ -18,7 +18,6 @@ impl JsCompiler {
 
         for ctx in ir.contexts() {
             s.compile_context(ctx, &ir);
-            println!("Gay");
         }
         for comp in ir.components() {
             s.compile_component(comp, &ir);
