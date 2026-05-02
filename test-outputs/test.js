@@ -1,3 +1,4 @@
+main();
 function f(p0){
     let v1;
     v1 = {f0: p0};

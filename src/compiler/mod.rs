@@ -4,14 +4,13 @@ use slynx::middleend::{
     IRType,
     ir::{Context, SlynxIR},
 };
-use std::path::PathBuf;
 
 pub struct JsCompiler {
     buffer: JSBuffer,
 }
 
 impl JsCompiler {
-    pub fn compile(ir: SlynxIR, path: PathBuf) -> Result<()> {
+    pub fn compile(ir: SlynxIR) -> Result<String> {
         let mut s = Self {
             buffer: JSBuffer::new(),
         };
@@ -23,8 +22,7 @@ impl JsCompiler {
             s.compile_component(comp, &ir);
         }
 
-        std::fs::write(path, &s.buffer.content)?;
-        Ok(())
+        Ok(s.buffer.content)
     }
 
     pub fn compile_context(&mut self, ctx: &Context, ir: &SlynxIR) {
