@@ -1,6 +1,6 @@
 use crate::{JSBuffer, JSComponent};
 use color_eyre::eyre::Result;
-use slynx::middleend::{
+use slynx::slynx_ir::{
     IRType,
     ir::{Context, SlynxIR},
 };
@@ -14,13 +14,31 @@ impl JsCompiler {
         let mut s = Self {
             buffer: JSBuffer::new(),
         };
-
-        for ctx in ir.contexts() {
-            s.compile_context(ctx, &ir);
-        }
         for comp in ir.components() {
             s.compile_component(comp, &ir);
         }
+        for ctx in ir.contexts() {
+            s.compile_context(ctx, &ir);
+        }
+
+        let main_returns_component = ir.contexts().iter().any(|ctx| {
+            ir.string_pool().get_name(ctx.name()) == "main" && {
+                let IRType::Function(fid) = ir.ir_types().get_type(ctx.ty()) else {
+                    return false;
+                };
+                matches!(
+                    ir.ir_types()
+                        .get_type(ir.ir_types().get_function_type(fid).get_return_type()),
+                    IRType::GenericComponent | IRType::Component(_)
+                )
+            }
+        });
+
+        if main_returns_component {
+            s.buffer.content.push_str(include_str!("../../js/start.js"));
+        }
+
+        println!("Final output:\n{}", s.buffer.content);
 
         Ok(s.buffer.content)
     }
@@ -40,7 +58,7 @@ impl JsCompiler {
         self.buffer.append_function(func);
     }
 
-    pub fn compile_component(&mut self, component: &slynx::middleend::Component, ir: &SlynxIR) {
+    pub fn compile_component(&mut self, component: &slynx::slynx_ir::Component, ir: &SlynxIR) {
         let ty = component.ir_type();
         let types = ir.ir_types();
         let IRType::Component(component_id) = types.get_type(ty) else {

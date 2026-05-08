@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub use component::*;
 pub use functions::*;
-use slynx::middleend::{
+use slynx::slynx_ir::{
     IRPointer, IRType, Instruction, InstructionType, Operand, Slot, SlynxIR, Value,
 };
 

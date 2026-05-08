@@ -16,8 +16,8 @@ struct Cli {
     target: String,
     #[arg(short, long)]
     output: String,
-    #[arg(short)]
-    include_files: Vec<String>,
+    #[arg(long, short, value_delimiter = ',')]
+    include: Vec<String>,
 }
 
 struct CompilationPhase {
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
     let files = cli
-        .include_files
+        .include
         .iter()
         .map(|v| std::fs::OpenOptions::new().read(true).open(v))
         .collect::<Result<_, _>>()?;

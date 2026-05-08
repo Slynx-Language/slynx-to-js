@@ -15,7 +15,7 @@ func f(age: int): int {
 	v.age
 }
 
-func main(a:int, b:int): int {
+func main(a:int, b:int): Component {
 	let q = Abc {value: 12};
 	let v = f(5);
 	let qj = if v > 12 {
@@ -23,5 +23,7 @@ func main(a:int, b:int): int {
 	}else {
 		20
 	};
-	(a + b) * a / 4 + v - qj
+	Abc {
+		value: qj
+	}
 }

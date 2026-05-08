@@ -1,0 +1,10 @@
+component Card {
+	pub prop title: str;
+	Text {
+		text: "hello"
+	}
+}
+
+func main(): Card {
+	Card {title: "world"}
+}

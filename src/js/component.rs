@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::js::InstructionCompiler;
-use slynx::middleend::ir::Value;
-use slynx::middleend::{IRPointer, IRSpecializedComponent, IRTypeId, Slot, SlynxIR};
+use slynx::slynx_ir::ir::Value;
+use slynx::slynx_ir::{IRPointer, IRSpecializedComponent, IRTypeId, Slot, SlynxIR};
 
 pub struct JSComponent {
     name: String,
@@ -30,12 +30,12 @@ impl InstructionCompiler for JSComponent {
     }
     fn variables(
         &self,
-    ) -> &std::collections::HashMap<IRPointer<slynx::middleend::Slot, 1>, String> {
+    ) -> &std::collections::HashMap<IRPointer<slynx::slynx_ir::Slot, 1>, String> {
         &self.variables
     }
     fn variables_mut(
         &mut self,
-    ) -> &mut std::collections::HashMap<IRPointer<slynx::middleend::Slot, 1>, String> {
+    ) -> &mut std::collections::HashMap<IRPointer<slynx::slynx_ir::Slot, 1>, String> {
         &mut self.variables
     }
 }

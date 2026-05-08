@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use slynx::middleend::{
+use slynx::slynx_ir::{
     ControlFlowGraph, IRPointer, InstructionType, Label, Slot, SlynxIR, petgraph::graph::NodeIndex,
 };
 
