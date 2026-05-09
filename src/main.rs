@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::Read,
     path::{Path, PathBuf},
+    process::exit,
 };
 mod compiler;
 mod config;
@@ -50,16 +51,18 @@ impl CompilationPhase {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
-    
+
     let (target, output, include) = match (cli.target, cli.output) {
         (Some(t), Some(o)) => (t, o, cli.include),
         _ => {
-            let config = StojsConfig::load()
-                .expect("Stojs.toml não encontrado e argumentos CLI não fornecidos");
+            let Some(config) = StojsConfig::load().unwrap() else {
+                eprintln!("Stojs.toml file not found. Nor config flags were passed");
+                exit(1);
+            };
             (config.target, config.output, config.include)
         }
     };
-    
+
     let files = include
         .iter()
         .map(|v| std::fs::OpenOptions::new().read(true).open(v))

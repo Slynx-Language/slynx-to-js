@@ -1,3 +1,4 @@
+use color_eyre::eyre::Result;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -9,8 +10,10 @@ pub struct StojsConfig {
 }
 
 impl StojsConfig {
-    pub fn load() -> Option<Self> {
-        let content = std::fs::read_to_string("Stojs.toml").ok()?;
-        toml::from_str(&content).ok()
+    pub fn load() -> Result<Option<Self>> {
+        let Some(content) = std::fs::read_to_string("Stojs.toml").ok() else {
+            return Ok(None);
+        };
+        toml::from_str(&content).map_err(|e| e.into())
     }
 }
