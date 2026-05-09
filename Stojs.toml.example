@@ -1,0 +1,5 @@
+# Stojs.toml - Slynx to JS Configuration
+
+target = "slynx/main.slynx"
+output = "js/output.js"
+include = ["js/prelude.js", "js/runtime.js"]

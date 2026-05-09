@@ -4,18 +4,21 @@ use std::{
     path::{Path, PathBuf},
 };
 mod compiler;
+mod config;
 mod js;
 
 use clap::Parser;
 use color_eyre::eyre::Result;
 pub use compiler::*;
+pub use config::*;
 pub use js::*;
+
 #[derive(Debug, Parser)]
 struct Cli {
     #[arg(short, long)]
-    target: String,
+    target: Option<String>,
     #[arg(short, long)]
-    output: String,
+    output: Option<String>,
     #[arg(long, short, value_delimiter = ',')]
     include: Vec<String>,
 }
@@ -47,11 +50,20 @@ impl CompilationPhase {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
-    let files = cli
-        .include
+    
+    let (target, output, include) = match (cli.target, cli.output) {
+        (Some(t), Some(o)) => (t, o, cli.include),
+        _ => {
+            let config = StojsConfig::load()
+                .expect("Stojs.toml não encontrado e argumentos CLI não fornecidos");
+            (config.target, config.output, config.include)
+        }
+    };
+    
+    let files = include
         .iter()
         .map(|v| std::fs::OpenOptions::new().read(true).open(v))
         .collect::<Result<_, _>>()?;
-    let phase = CompilationPhase::new(cli.target, files);
-    phase.compile_to(cli.output)
+    let phase = CompilationPhase::new(target, files);
+    phase.compile_to(output)
 }
