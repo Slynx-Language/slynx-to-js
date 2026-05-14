@@ -5,7 +5,8 @@ use std::collections::HashMap;
 pub use component::*;
 pub use functions::*;
 use slynx::slynx_ir::{
-    IRPointer, IRType, Instruction, InstructionType, Operand, Slot, SlynxIR, Value,
+    IRPointer, IRSpecializedComponent, IRType, Instruction, InstructionType, Operand, Slot,
+    SlynxIR, StyleProperty, Value,
 };
 
 pub struct JSBuffer {
@@ -81,7 +82,18 @@ pub trait InstructionCompiler {
                 }
                 Value::Slot(s) => self.variables().get(s).cloned().unwrap(),
                 Value::LabelArg(i) => self.resolve_label_arg(*i),
-                u => unimplemented!("Not implemented {u:?}"),
+                Value::Void => "null".to_string(),
+                Value::StructLiteral(_, ptr) => {
+                    let args = self
+                        .compile_values(ir.get_values_by_pointer(*ptr), ir)
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, arg)| format!("f{idx}: {arg}"))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!("{{{args}}}")
+                }
+                _ => unimplemented!(),
             };
             out.push(v);
         }
@@ -136,6 +148,31 @@ pub trait InstructionCompiler {
         let variable = self.variables().get(&slot).unwrap();
         self.ident(format!("{variable} = {};\n", &value[0]))
     }
+
+    fn compile_sapply(
+        &mut self,
+        ir: &SlynxIR,
+        property_code: &StyleProperty,
+        operands: IRPointer<Value>,
+    ) -> String {
+        let operands = ir.get_values_by_pointer(operands);
+        let (component, value) = {
+            let v = self.compile_values(operands, ir);
+            (v[0].clone(), v[1].clone())
+        };
+        let component_field = format!("{component}.style");
+        self.ident(match property_code {
+            StyleProperty::BackgroundColor => format!(
+                "{component_field}.backgroundColor = {};\n",
+                format!("'#'+{value}.toString(16)")
+            ),
+            StyleProperty::ForegroundColor => format!(
+                "{component_field}.color = {};\n",
+                format!("'#'+{value}.toString(16)")
+            ),
+        })
+    }
+
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     fn compile_instruction(&mut self, instruction: &Instruction, ir: &SlynxIR) -> String {
         match &instruction.instruction_type {
@@ -151,8 +188,8 @@ pub trait InstructionCompiler {
             InstructionType::GetField(f) => {
                 let values = ir.get_values_by_pointer(instruction.operands);
                 assert!(values.len() == 1);
-                let v = self.compile_values(values, ir);
-                format!("{}.f{f}", v[0])
+                let values = self.compile_values(values, ir);
+                format!("{}.f{f}", values[0])
             }
             InstructionType::SetField(f) => {
                 let values = ir.get_values_by_pointer(instruction.operands);
@@ -209,6 +246,10 @@ pub trait InstructionCompiler {
             InstructionType::Br(_) => "".to_string(),
             InstructionType::Cbr { .. } => "".to_string(),
             InstructionType::Reinterpret => "".to_string(),
+            InstructionType::SApply { property_code } => {
+                self.compile_sapply(ir, property_code, instruction.operands)
+            }
+            InstructionType::InitCall(_) => unimplemented!(),
         }
     }
 }

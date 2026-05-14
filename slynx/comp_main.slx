@@ -1,3 +1,6 @@
+func main(): Card {
+	Card {title: "world"}
+}
 component Card {
 	pub prop title: str;
 	Text {
@@ -5,6 +8,18 @@ component Card {
 	}
 }
 
-func main(): Card {
-	Card {title: "world"}
+stylesheet L(){
+	styles {
+		default {
+			foregroundColor: 0x00ff00
+		}
+	}
+}
+
+stylesheet Gay() uses L() {
+	styles {
+		default {
+			backgroundColor: 0xff0000
+		}
+	}
 }
