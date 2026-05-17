@@ -1,25 +1,18 @@
-func main(): Card {
-	Card {title: "world"}
+component Pedrinho {
+	Div {
+		Text {
+			text: "Pedrinho leitazedo"
+		}
+	}
 }
-component Card {
-	pub prop title: str;
+
+component Jorgin {
 	Text {
-		text: "hello"
+		text: "Jorginho neguinho"
 	}
+	Pedrinho {}
 }
 
-stylesheet L(){
-	styles {
-		default {
-			foregroundColor: 0x00ff00
-		}
-	}
-}
-
-stylesheet Gay() uses L() {
-	styles {
-		default {
-			backgroundColor: 0xff0000
-		}
-	}
+func main(): Component {
+	Jorgin {}	
 }

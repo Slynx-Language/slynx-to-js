@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::js::InstructionCompiler;
 use slynx::slynx_ir::ir::Value;
-use slynx::slynx_ir::{IRPointer, IRSpecializedComponent, IRTypeId, Slot, SlynxIR};
+use slynx::slynx_ir::{IRPointer, IRTypeId, Instruction, Slot, SlynxIR};
 
 pub struct JSComponent {
     name: String,
@@ -28,9 +28,7 @@ impl InstructionCompiler for JSComponent {
     fn arguments(&self) -> &Vec<String> {
         &self.arguments
     }
-    fn variables(
-        &self,
-    ) -> &std::collections::HashMap<IRPointer<slynx::slynx_ir::Slot, 1>, String> {
+    fn variables(&self) -> &std::collections::HashMap<IRPointer<slynx::slynx_ir::Slot, 1>, String> {
         &self.variables
     }
     fn variables_mut(
@@ -51,7 +49,13 @@ impl JSComponent {
         }
     }
 
-    pub fn compile(&mut self, fields: &[IRTypeId], children: IRPointer<Value>, ir: &SlynxIR) {
+    pub fn compile(
+        &mut self,
+        fields: &[IRTypeId],
+        children: IRPointer<Value>,
+        instructions: IRPointer<Instruction>,
+        ir: &SlynxIR,
+    ) {
         let params: Vec<String> = (0..fields.len()).map(|i| format!("p{}", i)).collect();
         self.buffer.push_str(&format!("function {}(", self.name));
         self.buffer.push_str(&params.join(","));
@@ -61,8 +65,8 @@ impl JSComponent {
         let children_vals = ir.get_values_by_pointer(children);
 
         for (idx, child_val) in children_vals.iter().enumerate() {
-            let var_name = format!("c{}", idx + 1);
-            self.compile_child(child_val, &var_name, ir, &params);
+            let var_name = format!("c{}", idx);
+            self.compile_child(child_val, &var_name, ir);
         }
         let child_count = children_vals.len();
         let ret_fields = (1..=child_count)
@@ -70,44 +74,21 @@ impl JSComponent {
             .chain(params)
             .collect::<Vec<_>>()
             .join(",");
+
+        for instruction in ir.get_instruction_by_pointer(instructions) {
+            let instruction = self.compile_instruction(instruction, ir);
+            self.buffer.push_str(&self.ident(instruction));
+            self.buffer.push_str(";\n");
+        }
         self.buffer
             .push_str(&self.ident(format!("return {{{ret_fields}}};\n",)));
+        self.decrease_identation();
     }
 
-    fn compile_child(&mut self, value: &Value, var_name: &str, ir: &SlynxIR, params: &[String]) {
-        let out = match value {
-            Value::Specliazed(ptr) => {
-                let spec = ir.get_specialized(ptr.clone());
-                match spec {
-                    IRSpecializedComponent::Text(v) => {
-                        let v_vals = ir.get_values_by_pointer(v.with_length::<0>());
-                        assert_eq!(v_vals.len(), 1);
-                        let expr = self.compile_values(v_vals, ir);
-                        format!(
-                            "let {var_name} = document.createElement(\"p\");\n {}",
-                            self.ident(format!("{var_name}.textContent = {};\n", expr[0])),
-                        )
-                    }
-                    IRSpecializedComponent::Div(children_vals) => {
-                        let mut out =
-                            format!("let {} = document.createElement(\"div\");\n", var_name);
-                        let child_vals = ir.get_values_by_pointer(children_vals.clone());
-                        for (i, child_val) in child_vals.iter().enumerate() {
-                            let child_var = format!("{var_name}_c{}", i + 1);
-                            self.compile_child(child_val, &child_var, ir, params);
-                            out.push_str(
-                                &self.ident(format!("{var_name}.appendChild({child_var});\n")),
-                            )
-                        }
-                        out
-                    }
-                }
-            }
-            _ => {
-                let expr = self.compile_values(&[value.clone()], ir);
-                format!("let {var_name} = {};\n", expr[0])
-            }
-        };
+    fn compile_child(&mut self, value: &Value, var_name: &str, ir: &SlynxIR) {
+        let expr = self.compile_values(&[value.clone()], ir);
+        let out = format!("let {var_name} = {};\n", expr[0]);
+
         self.buffer.push_str(&self.ident(out));
     }
 

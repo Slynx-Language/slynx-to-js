@@ -1,29 +1,18 @@
-component Abc {
-	pub prop value: int;
+component Pedrinho {
+	Div {
+		Text {
+			text: "Pedrinho leitazedo"
+		}
+	}
+}
+
+component Jorgin {
 	Text {
-		text: "maria"
+		text: "Jorginho neguinho"
 	}
+	Pedrinho {}
 }
 
-object Pessoa {
-	age: int
-}
-
-func f(age: int): int {
-	let v = Pessoa(age:age);
-	v.age = v.age + age;
-	v.age
-}
-
-func main(a:int, b:int): Component {
-	let q = Abc {value: 12};
-	let v = f(5);
-	let qj = if v > 12 {
-		10
-	}else {
-		20
-	};
-	Abc {
-		value: qj
-	}
+func main(): Component {
+	Jorgin {}	
 }

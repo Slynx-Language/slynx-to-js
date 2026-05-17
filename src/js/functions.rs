@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use slynx::slynx_ir::{
-    ControlFlowGraph, IRPointer, InstructionType, Label, Slot, SlynxIR, petgraph::graph::NodeIndex,
+    ControlFlowGraph, IRPointer, Instruction, InstructionType, Label, Slot, SlynxIR,
+    petgraph::graph::NodeIndex,
 };
 
 use crate::InstructionCompiler;
@@ -15,6 +16,10 @@ pub struct JSFunction {
     /// The label currently being compiled, needed to resolve LabelArg values
     current_label: Option<IRPointer<Label, 1>>,
     identation: usize,
+    /// Tracks Component instructions whose results have been materialized into variables.
+    /// This prevents duplicate DOM element creation when the same SSA instruction is referenced
+    /// by multiple consumers (e.g. a Text element used for both textContent and appendChild).
+    materialized: HashMap<IRPointer<Instruction, 1>, String>,
 }
 
 impl InstructionCompiler for JSFunction {
@@ -43,6 +48,18 @@ impl InstructionCompiler for JSFunction {
             .cloned()
             .unwrap_or_else(|| panic!("LabelArg({index}) not found for current label"))
     }
+    fn should_materialize_instructions(&self) -> bool {
+        true
+    }
+    fn emit_raw(&mut self, code: String) {
+        self.content.push_str(&code);
+    }
+    fn materialized_instructions(&self) -> &HashMap<IRPointer<Instruction, 1>, String> {
+        &self.materialized
+    }
+    fn materialized_instructions_mut(&mut self) -> &mut HashMap<IRPointer<Instruction, 1>, String> {
+        &mut self.materialized
+    }
 }
 
 impl JSFunction {
@@ -54,6 +71,7 @@ impl JSFunction {
             label_args: HashMap::new(),
             current_label: None,
             identation: 1,
+            materialized: HashMap::new(),
         }
     }
 

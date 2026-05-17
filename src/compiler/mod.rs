@@ -66,7 +66,12 @@ impl JsCompiler {
         };
         let component_type = types.get_component_type(component_id);
         let mut js_component = JSComponent::new(ir.string_pool().get_name(component_type.name()));
-        js_component.compile(component_type.fields(), component.values(), ir);
+        js_component.compile(
+            component_type.fields(),
+            component.values(),
+            component.instructions(),
+            ir,
+        );
         self.buffer.append_component(js_component);
     }
 }

@@ -1,12 +1,12 @@
 mod component;
 mod functions;
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Deref};
 
 pub use component::*;
 pub use functions::*;
 use slynx::slynx_ir::{
-    IRPointer, IRSpecializedComponent, IRType, Instruction, InstructionType, Operand, Slot,
-    SlynxIR, StyleProperty, Value,
+    IRPointer, IRSpecializedComponentType, IRType, Instruction, InstructionType, Operand, Slot,
+    SlynxIR, StyleProperty, UIInstruction, Value, ValueKind,
 };
 
 pub struct JSBuffer {
@@ -57,6 +57,27 @@ pub trait InstructionCompiler {
     fn resolve_label_arg(&self, _index: usize) -> String {
         unimplemented!("LabelArg not supported in this context")
     }
+    /// Whether this compiler should materialize multi-use SSA instruction results into variables.
+    /// When true, `compile_values` will detect `Component` instructions referenced more than once
+    /// and emit `let vN = <expr>;` on first use, reusing the variable on subsequent uses.
+    /// This is needed because some instructions (e.g. `document.createElement('p')`) create
+    /// new objects on every evaluation — inlining them at multiple use-sites produces wrong output.
+    fn should_materialize_instructions(&self) -> bool {
+        false
+    }
+    /// Push raw code directly to the output buffer (used for emitting materialized variable declarations).
+    fn emit_raw(&mut self, _code: String) {
+        unimplemented!("emit_raw not implemented — enable should_materialize_instructions first")
+    }
+    /// Returns a map from instruction pointer to its materialized variable name.
+    fn materialized_instructions(&self) -> &HashMap<IRPointer<Instruction, 1>, String> {
+        unimplemented!("materialized_instructions not implemented")
+    }
+    /// Returns a mutable reference to the materialized instruction map.
+    fn materialized_instructions_mut(&mut self) -> &mut HashMap<IRPointer<Instruction, 1>, String> {
+        unimplemented!("materialized_instructions_mut not implemented")
+    }
+
     ///Compiles the given `raw` operand. Operands are primitives
     fn compile_raw(&mut self, raw: &Operand, ir: &SlynxIR) -> String {
         match raw {
@@ -71,19 +92,49 @@ pub trait InstructionCompiler {
     fn compile_values(&mut self, values: &[Value], ir: &SlynxIR) -> Vec<String> {
         let mut out = Vec::with_capacity(values.len());
         for val in values {
-            let v = match val {
-                Value::Raw(v) => {
+            let v = match val.deref() {
+                ValueKind::Raw(v) => {
                     self.compile_raw(&ir.get_operand_by_pointer(v.clone().with_length())[0], ir)
                 }
-                Value::FuncArg(n) => self.arguments()[*n].clone(),
-                Value::Instruction(ptr) => {
-                    let inst = &ir.get_instruction_by_pointer(ptr.clone().with_length())[0];
-                    self.compile_instruction(inst, ir)
+                ValueKind::FuncArg(n) => self.arguments()[*n].clone(),
+                ValueKind::Instruction(ptr) => {
+                    // If materialization is enabled, check if this instruction has already been
+                    // materialized into a variable (it was referenced by a previous value).
+                    if self.should_materialize_instructions() {
+                        if let Some(var) = self.materialized_instructions().get(ptr) {
+                            var.clone()
+                        } else {
+                            let inst =
+                                &ir.get_instruction_by_pointer(ptr.clone().with_length())[0];
+                            let expr = self.compile_instruction(inst, ir);
+                            // Materialize Component instructions (createElement) into variables
+                            // to prevent duplicate DOM element creation when the same instruction
+                            // is referenced by multiple consumers (e.g. textContent + appendChild).
+                            if matches!(inst.instruction_type, InstructionType::Component) {
+                                let var_name = format!(
+                                    "v{}",
+                                    self.variables().len()
+                                        + self.materialized_instructions().len()
+                                        + 1
+                                );
+                                self.emit_raw(self.ident(format!("let {var_name} = {expr};\n")));
+                                self.materialized_instructions_mut()
+                                    .insert(ptr.clone(), var_name.clone());
+                                var_name
+                            } else {
+                                expr
+                            }
+                        }
+                    } else {
+                        let inst =
+                            &ir.get_instruction_by_pointer(ptr.clone().with_length())[0];
+                        self.compile_instruction(inst, ir)
+                    }
                 }
-                Value::Slot(s) => self.variables().get(s).cloned().unwrap(),
-                Value::LabelArg(i) => self.resolve_label_arg(*i),
-                Value::Void => "null".to_string(),
-                Value::StructLiteral(_, ptr) => {
+                ValueKind::Slot(s) => self.variables().get(s).cloned().unwrap(),
+                ValueKind::LabelArg(i) => self.resolve_label_arg(*i),
+                ValueKind::Void => "null".to_string(),
+                ValueKind::StructLiteral(ptr) => {
                     let args = self
                         .compile_values(ir.get_values_by_pointer(*ptr), ir)
                         .iter()
@@ -93,7 +144,7 @@ pub trait InstructionCompiler {
                         .join(",");
                     format!("{{{args}}}")
                 }
-                _ => unimplemented!(),
+                ValueKind::ComponentChild(n) => format!("c{n}"),
             };
             out.push(v);
         }
@@ -173,6 +224,30 @@ pub trait InstructionCompiler {
         })
     }
 
+    fn compile_append_child(&self, args: &[String], _ir: &SlynxIR) -> String {
+        let [parent, child] = args else {
+            panic!("expected exactly 2 arguments");
+        };
+        self.ident(format!("{parent}.appendChild({child});\n"))
+    }
+
+    fn compile_field_access(&mut self, index: usize, values: &[Value], ir: &SlynxIR) -> String {
+        assert!(values.len() == 2);
+        let compiled_values = self.compile_values(values, ir);
+        let field = match ir.ir_types().get_type(values[0].ir_type()) {
+            IRType::Specialized(IRSpecializedComponentType::Div) => {
+                return self.compile_append_child(&compiled_values, ir);
+            }
+            IRType::Specialized(IRSpecializedComponentType::Text) => "textContent".to_string(),
+            _ => format!("f{index}"),
+        };
+
+        self.ident(format!(
+            "{}.{field} = {};\n",
+            compiled_values[0], compiled_values[1]
+        ))
+    }
+
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     fn compile_instruction(&mut self, instruction: &Instruction, ir: &SlynxIR) -> String {
         match &instruction.instruction_type {
@@ -193,9 +268,7 @@ pub trait InstructionCompiler {
             }
             InstructionType::SetField(f) => {
                 let values = ir.get_values_by_pointer(instruction.operands);
-                assert!(values.len() == 2);
-                let v = self.compile_values(values, ir);
-                self.ident(format!("{}.f{f} = {};\n", v[0], v[1]))
+                self.compile_field_access(*f, values, ir)
             }
             InstructionType::Read => {
                 let values = ir.get_values_by_pointer(instruction.operands);
@@ -225,31 +298,43 @@ pub trait InstructionCompiler {
                     .join(",");
                 format!("return {operand};")
             }
-            InstructionType::FunctionCall(ctx) => {
+            InstructionType::FunctionCall(ctx)
+            | InstructionType::UI(UIInstruction::InitCall(ctx)) => {
                 let ctx = &ir.contexts()[ctx.ptr()];
                 let name = ir.string_pool().get_name(ctx.name());
                 let args = ir.get_values_by_pointer(instruction.operands);
                 let args = self.compile_values(args, ir).join(",");
-                format!("{}({})", name, args)
+                format!("{name}({args})")
             }
             InstructionType::Component => {
                 let t = instruction.value_type;
-                let IRType::Component(component_id) = ir.ir_types().get_type(t) else {
-                    unreachable!("Expected type of component instruction to be a component")
-                };
-                let component = ir.ir_types().get_component_type(component_id);
-                let name = ir.string_pool().get_name(component.name());
-                let operands =
-                    self.compile_values(ir.get_values_by_pointer(instruction.operands), ir);
-                format!("{name}({})", operands.join(","))
+
+                match ir.ir_types().get_type(t) {
+                    IRType::Component(component_id) => {
+                        let component = ir.ir_types().get_component_type(component_id);
+                        let name = ir.string_pool().get_name(component.name());
+                        let operands = self
+                            .compile_values(ir.get_values_by_pointer(instruction.operands), ir)
+                            .join(",");
+                        format!("{name}({operands})")
+                    }
+                    IRType::Specialized(IRSpecializedComponentType::Div) => {
+                        "document.createElement('div')".to_string()
+                    }
+                    IRType::Specialized(IRSpecializedComponentType::Text) => {
+                        "document.createElement('p')".to_string()
+                    }
+                    _ => unreachable!(
+                        "Type of component should be a component, or specialized component"
+                    ),
+                }
             }
             InstructionType::Br(_) => "".to_string(),
             InstructionType::Cbr { .. } => "".to_string(),
             InstructionType::Reinterpret => "".to_string(),
-            InstructionType::SApply { property_code } => {
+            InstructionType::UI(UIInstruction::SApply { property_code }) => {
                 self.compile_sapply(ir, property_code, instruction.operands)
             }
-            InstructionType::InitCall(_) => unimplemented!(),
         }
     }
 }
