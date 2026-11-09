@@ -4,7 +4,16 @@ use std::collections::HashMap;
 
 pub use component::*;
 pub use functions::*;
-use slynx::slynx_ir::{IRType, Opcode, Operand, SlynxIR, StyleProperty, Value};
+use slynx::slynx_ir::{IRType, IRTypeId, Opcode, Operand, SlynxIR, Value};
+
+/// Returns the JS identifier used to store an internal (non-extern) global.
+pub fn js_global_name(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    format!("global_{sanitized}")
+}
 
 pub struct JSBuffer {
     pub content: String,
@@ -52,6 +61,9 @@ pub trait InstructionCompiler {
     fn variables(&self) -> &HashMap<Value, String>;
     fn variables_mut(&mut self) -> &mut HashMap<Value, String>;
     fn append_content(&mut self, content: &str);
+    fn resolve_materialized(&self, _value: Value) -> Option<String> {
+        None
+    }
     fn next_variable_name(&self) -> String {
         format!("v{}", self.variables().len())
     }
@@ -126,33 +138,67 @@ pub trait InstructionCompiler {
         self.ident(format!("{variable} = {value};\n"))
     }
 
-    fn compile_sapply(
-        &mut self,
-        property: &StyleProperty,
-        values: &[Value],
-        ir: &SlynxIR,
-    ) -> String {
-        let component = self.compile_value(values[0], ir);
-        let value = self.compile_value(values[1], ir);
-        let partial_content = format!("{component}.style");
-        match property {
-            StyleProperty::BackgroundColor => self.ident(format!(
-                "{partial_content}.backgroundColor = '#'+{value}.toString(16).padStart(6, '0');\n"
-            )),
-            StyleProperty::ForegroundColor => self.ident(format!(
-                "{partial_content}.color = '#'+{value}.toString(16).padStart(6, '0');\n"
-            )),
+    /// Produces a JS expression that represents the zero value of `ty`.
+    fn zeroed_value(&self, ty: IRTypeId, ir: &SlynxIR) -> String {
+        match ir.types.get_type(ty) {
+            IRType::I(_)
+            | IRType::U(_)
+            | IRType::ISIZE
+            | IRType::USIZE
+            | IRType::F16
+            | IRType::F32
+            | IRType::F64 => "0".to_string(),
+            IRType::BOOL => "false".to_string(),
+            IRType::STR => "\"\"".to_string(),
+            IRType::VOID => "null".to_string(),
+            IRType::Array(inner, len) => {
+                let value = self.zeroed_value(*inner, ir);
+                format!("[{}]", vec![value; *len].join(","))
+            }
+            IRType::Vector(_) => "[]".to_string(),
+            IRType::Struct(struct_id) => {
+                let fields = ir.types.get_object_type(*struct_id).get_fields();
+                let fields = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field)| format!("f{idx}: {}", self.zeroed_value(*field, ir)))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{{{fields}}}")
+            }
+            IRType::Component(component_id) => {
+                let fields = ir.types.get_component_type(*component_id).fields();
+                let fields = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field)| format!("f{idx}: {}", self.zeroed_value(*field, ir)))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{{{fields}}}")
+            }
+            IRType::Union(union_id) => {
+                let variants = ir.types.get_union_type(*union_id).get_variants();
+                match variants.first() {
+                    Some(variant) => self.zeroed_value(*variant, ir),
+                    None => "null".to_string(),
+                }
+            }
+            IRType::Pointer(_)
+            | IRType::Function(_)
+            | IRType::GenericComponent
+            | IRType::Specialized(_) => "null".to_string(),
         }
     }
+
     fn compile_field_read(&mut self, parent: Value, index: usize, ir: &SlynxIR) -> String {
         let ty = ir.get_instruction(parent).value_type;
         let parent = self.compile_value(parent, ir);
 
         match () {
-            _ if ty == ir.specialized_text_type() => {
+            _ if ty == ir.types.specialized_text_type() => {
                 format!("{parent}.textContent")
             }
-            _ if ty == ir.specialized_div_type() => {
+            _ if ty == ir.types.specialized_div_type() => {
                 format!("{parent}.appendChild")
             }
             _ => format!("{parent}.f{index}"),
@@ -169,7 +215,7 @@ pub trait InstructionCompiler {
         let read = self.compile_field_read(parent, index, ir);
         let value = self.compile_value(value, ir);
         match () {
-            _ if ty == ir.specialized_div_type() => {
+            _ if ty == ir.types.specialized_div_type() => {
                 format!("{read}({value});\n")
             }
             _ => format!("{read} = {value};\n"),
@@ -180,15 +226,19 @@ pub trait InstructionCompiler {
         let instruction = ir.get_instruction(instruction);
 
         match () {
-            _ if ir.specialized_text_type() == instruction.value_type => {
+            _ if ir.types.specialized_text_type() == instruction.value_type => {
                 let values = &instruction.operands;
-                debug_assert_eq!(values.len(), 1);
-                let expr = &self.compile_values(values, ir)[0];
                 let creation = self.ident(format!("let {name} = document.createElement(\"p\");\n"));
-                let write = self.ident(format!("{name}.textContent = {expr};\n"));
-                format!("{creation}{write}")
+                if values.is_empty() {
+                    creation
+                } else {
+                    debug_assert_eq!(values.len(), 1);
+                    let expr = &self.compile_values(values, ir)[0];
+                    let write = self.ident(format!("{name}.textContent = {expr};\n"));
+                    format!("{creation}{write}")
+                }
             }
-            _ if ir.specialized_div_type() == instruction.value_type => {
+            _ if ir.types.specialized_div_type() == instruction.value_type => {
                 let mut out =
                     self.ident(format!("let {name} = document.createElement(\"div\");\n"));
 
@@ -199,8 +249,10 @@ pub trait InstructionCompiler {
                 out
             }
 
-            _ if let IRType::Component(component_id) = ir.get_type(instruction.value_type) => {
-                let component = ir.get_component_type(component_id);
+            _ if let IRType::Component(component_id) =
+                ir.types.get_type(instruction.value_type) =>
+            {
+                let component = ir.types.get_component_type(*component_id);
                 let name = ir.get_name(component.name());
                 let operands = self.compile_values(&instruction.operands, ir).join(",");
                 format!("{name}({operands})")
@@ -212,9 +264,30 @@ pub trait InstructionCompiler {
 
     ///Compiles down the given `instruction`. This is basically recursive, since it must retrieve the values referenced by this `instruction`
     fn compile_value(&mut self, value: Value, ir: &SlynxIR) -> String {
+        if let Some(materialized) = self.resolve_materialized(value) {
+            return materialized;
+        }
+        if value.is_void() {
+            return String::new();
+        }
         let instruction = ir.get_instruction(value);
         match &instruction.opcode {
-            Opcode::GetChild(_) => unimplemented!("Get child not implement yet"),
+            Opcode::FieldRef(index) => {
+                let parent = self.compile_value(instruction.operands[0], ir);
+                format!("{parent}.f{index}")
+            }
+            Opcode::DerefWrite => {
+                let values = self.compile_values(&instruction.operands, ir);
+                self.ident(format!("{} = {};\n", values[0], values[1]))
+            }
+            Opcode::Move | Opcode::Cast | Opcode::Copy | Opcode::Ref | Opcode::Deref => {
+                self.compile_value(instruction.operands[0], ir)
+            }
+
+            Opcode::GetChild(index) => {
+                let parent = self.compile_value(instruction.operands[0], ir);
+                format!("{parent}.c{index}")
+            }
             Opcode::BlockParam(i) => self.resolve_label_arg(*i as usize),
             Opcode::Arg(idx) => self.arguments()[*idx as usize].clone(),
             Opcode::Const(c) => self.compile_raw(c, ir),
@@ -244,6 +317,20 @@ pub trait InstructionCompiler {
                 );
                 self.ident(out)
             }
+            Opcode::DynGetField(name) => {
+                let parent = self.compile_value(instruction.operands[0], ir);
+                format!("{parent}.{}", ir.get_name(*name))
+            }
+            Opcode::DynSetField(name) => {
+                let values = self.compile_values(&instruction.operands, ir);
+                self.ident(format!("{}.{} = {};\n", values[0], ir.get_name(*name), values[1]))
+            }
+            Opcode::DynMethodCall(name) => {
+                let values = self.compile_values(&instruction.operands, ir);
+                let object = &values[0];
+                let args = values[1..].join(",");
+                format!("{object}.{}({args})", ir.get_name(*name))
+            }
 
             Opcode::Read => {
                 assert!(instruction.operands.len() == 1);
@@ -270,27 +357,39 @@ pub trait InstructionCompiler {
             Opcode::AShr => self.compile_binary(&instruction.operands, ">>>", ir),
             Opcode::Shl => self.compile_binary(&instruction.operands, "<<", ir),
             Opcode::Struct => self.compile_struct_expression(&instruction.operands, ir),
+            Opcode::Array | Opcode::Vector => {
+                let values = self.compile_values(&instruction.operands, ir).join(",");
+                format!("[{values}]")
+            }
+            Opcode::ArrayGet => {
+                let values = self.compile_values(&instruction.operands, ir);
+                format!("{}[{}]", values[0], values[1])
+            }
+            Opcode::Zeroed => self.zeroed_value(instruction.value_type, ir),
+            Opcode::Global(global) => {
+                let global = ir.get_view(*global);
+                js_global_name(global.raw_name())
+            }
+            Opcode::GlobalExtern(name) => ir.get_name(*name).to_string(),
             Opcode::Ret => {
                 let operand = self.compile_value(instruction.operands[0], ir);
                 format!("return {operand};")
             }
-            Opcode::Call(fptr) | Opcode::InitCall(fptr) => {
-                let func_view = ir.get_view(*fptr);
-                let name = func_view.get_name();
+            Opcode::Call(fptr) => {
+                let name = ir.get_view(*fptr).get_name().to_string();
                 let args = self.compile_values(&instruction.operands, ir).join(",");
-                if instruction.value_type == ir.void_type() {
-                    self.ident(format!("{name}({args});\n"))
-                } else {
-                    format!("{name}({args})")
-                }
+                format!("{name}({args})")
             }
-            Opcode::SApply { property_code } => {
-                self.compile_sapply(property_code, &instruction.operands, ir)
+            Opcode::InitCall(fptr) => {
+                let name = ir.get_view(*fptr).get_name().to_string();
+                let args = self.compile_values(&instruction.operands, ir).join(",");
+                self.ident(format!("{name}({args});\n"))
             }
+
             Opcode::Component => {
                 let inst = ir.get_instruction(value);
-                let is_specialized = inst.value_type == ir.specialized_text_type()
-                    || inst.value_type == ir.specialized_div_type();
+                let is_specialized = inst.value_type == ir.types.specialized_text_type()
+                    || inst.value_type == ir.types.specialized_div_type();
                 if is_specialized {
                     if self.variables().contains_key(&value) {
                         self.resolve_allocation(value)
@@ -307,7 +406,6 @@ pub trait InstructionCompiler {
             }
             Opcode::Br(_) => "".to_string(),
             Opcode::Cbr { .. } => "".to_string(),
-            Opcode::Reinterpret => "".to_string(),
         }
     }
 }

@@ -15,6 +15,16 @@ pub struct JSFunction {
     label_args: HashMap<(IRPointer<Label, 1>, usize), String>,
     /// The label currently being compiled, needed to resolve LabelArg values
     current_label: Option<IRPointer<Label, 1>>,
+    /// Number of times each instruction is evaluated when expressions are
+    /// inlined. The instruction itself contributes one evaluation.
+    use_counts: HashMap<Value, usize>,
+    /// Deferred impure values that had to be materialized because they are
+    /// evaluated more than once.
+    materialized: HashMap<Value, String>,
+    /// Void calls that were already emitted as statements. Their value must
+    /// not be evaluated again by a following `Ret`.
+    emitted_values: HashSet<Value>,
+    temp_counter: usize,
     identation: usize,
 }
 
@@ -47,6 +57,9 @@ impl InstructionCompiler for JSFunction {
     fn append_content(&mut self, content: &str) {
         self.content.push_str(content);
     }
+    fn resolve_materialized(&self, value: Value) -> Option<String> {
+        self.materialized.get(&value).cloned()
+    }
 }
 
 impl JSFunction {
@@ -57,11 +70,16 @@ impl JSFunction {
             variables: HashMap::new(),
             label_args: HashMap::new(),
             current_label: None,
+            use_counts: HashMap::new(),
+            materialized: HashMap::new(),
+            emitted_values: HashSet::new(),
+            temp_counter: 0,
             identation: 1,
         }
     }
 
     pub fn compile_from_cfg(&mut self, cfg: &ControlFlowGraph, ir: &SlynxIR) {
+        self.use_counts = Self::compute_use_counts(cfg, ir);
         let order = cfg
             .topological_order()
             .expect("CFG has cycles (while loops not yet supported)");
@@ -72,6 +90,58 @@ impl JSFunction {
                 continue;
             }
             self.emit_node(*node, cfg, ir, &mut emitted);
+        }
+    }
+
+    fn compute_use_counts(cfg: &ControlFlowGraph, ir: &SlynxIR) -> HashMap<Value, usize> {
+        let mut counts = HashMap::new();
+        let mut stack = Vec::new();
+        for block in cfg.graph().node_weights() {
+            for value in ir.get_view(block.label()).get_instructions() {
+                stack.push((*value, 1usize));
+            }
+        }
+        while let Some((value, multiplicity)) = stack.pop() {
+            *counts.entry(value).or_insert(0) += multiplicity;
+            let instruction = ir.get_instruction(value);
+            for operand in &instruction.operands {
+                stack.push((*operand, multiplicity));
+            }
+        }
+        counts
+    }
+
+    fn emit_deferred(
+        &mut self,
+        value: Value,
+        instruction: &slynx::slynx_ir::Instruction,
+        ir: &SlynxIR,
+    ) -> bool {
+        let uses = self
+            .use_counts
+            .get(&value)
+            .copied()
+            .unwrap_or(0)
+            .saturating_sub(1);
+        match &instruction.opcode {
+            Opcode::Call(_) | Opcode::DynMethodCall(_) => {
+                if uses == 0 {
+                    let expr = self.compile_value(value, ir);
+                    self.content.push_str(&self.ident(format!("{expr};\n")));
+                } else if uses == 1 {
+                    // Inlined at its single use site.
+                } else if !self.materialized.contains_key(&value) {
+                    let expr = self.compile_value(value, ir);
+                    let var = format!("tmp{}", self.temp_counter);
+                    self.temp_counter += 1;
+                    self.content
+                        .push_str(&self.ident(format!("let {var} = {expr};\n")));
+                    self.materialized.insert(value, var);
+                }
+                true
+            }
+            Opcode::Component => uses > 0,
+            _ => false,
         }
     }
 
@@ -87,14 +157,24 @@ impl JSFunction {
         self.current_label = Some(label_ptr);
 
         let all_insts = ir.get_view(label_ptr).get_instructions().to_vec();
-        let (body, terminator) = match all_insts.split_last() {
-            Some((t, body)) => (body, Some(*t)),
-            None => (&[][..], None),
+        let (body, terminator) = match all_insts.last() {
+            Some(last)
+                if matches!(
+                    ir.get_instruction(*last).opcode,
+                    Opcode::Ret | Opcode::Br(_) | Opcode::Cbr { .. }
+                ) =>
+            {
+                (&all_insts[..all_insts.len() - 1], Some(*last))
+            }
+            _ => (&all_insts[..], None),
         };
 
         for inst in body {
             let instruction = ir.get_instruction(*inst);
             if Self::is_expression(&instruction.opcode, instruction.value_type, ir) {
+                continue;
+            }
+            if self.emit_deferred(*inst, instruction, ir) {
                 continue;
             }
             let s = self.compile_value(*inst, ir);
@@ -105,18 +185,20 @@ impl JSFunction {
 
         match &term_instruction.opcode {
             Opcode::Ret => {
-                let s = self.compile_value(term, ir);
-                self.content.push_str(&self.ident(s));
+                let value = term_instruction.operands.first().copied();
+                if value.map_or(true, |v| self.emitted_values.contains(&v)) {
+                    self.content.push_str(&self.ident("return;\n".to_string()));
+                } else {
+                    let s = self.compile_value(term, ir);
+                    self.content.push_str(&self.ident(s));
+                }
             }
             Opcode::Br(target_ptr) => {
                 if !ir.get_view(*target_ptr).arguments().is_empty() {
+                    self.ensure_label_args(*target_ptr, ir);
                     let compiled = self.compile_values(&term_instruction.operands, ir);
                     for (i, val) in compiled.into_iter().enumerate() {
-                        let var = self
-                            .label_args
-                            .get(&(*target_ptr, i))
-                            .cloned()
-                            .unwrap_or_else(|| panic!("label arg var not allocated"));
+                        let var = self.label_arg_var(*target_ptr, i, ir);
                         self.content
                             .push_str(&self.ident(format!("{var} = {val};\n")));
                     }
@@ -128,34 +210,55 @@ impl JSFunction {
                 ..
             } => {
                 let mappings = cfg.label_mappings();
-                let then_node = mappings[then_label];
-                let else_node = mappings[else_label];
+                let then_node = mappings.get(then_label).copied();
+                let else_node = mappings.get(else_label).copied();
 
-                if let Some(end_ptr) = self.find_end_label(then_node, else_node, cfg, ir) {
-                    for i in 0..ir.get_view(end_ptr).arguments().len() {
-                        if !self.label_args.contains_key(&(end_ptr, i)) {
-                            let var_name =
-                                format!("v{}", self.variables.len() + self.label_args.len() + 1);
-                            let decl = self.ident(format!("let {var_name};\n"));
-                            self.content.push_str(&decl);
-                            self.label_args.insert((end_ptr, i), var_name);
-                        }
+                if let (Some(then_node), Some(else_node)) = (then_node, else_node) {
+                    if let Some(end_ptr) = self.find_end_label(then_node, else_node, cfg, ir) {
+                        self.ensure_label_args(end_ptr, ir);
                     }
                 }
+                self.ensure_label_args(*then_label, ir);
+                self.ensure_label_args(*else_label, ir);
 
-                let mut cond_vals = self.compile_values(&term_instruction.operands, ir);
-                let cond = cond_vals.remove(0);
-                // restore current_label after compile_values (it may change in recursive emit)
+                let then_arg_count = ir.get_view(*then_label).arguments().len();
+                let condition = term_instruction.operands[0];
+                let cond = if condition.is_void() {
+                    "false".to_string()
+                } else {
+                    self.compile_value(condition, ir)
+                };
+                // restore current_label after compiling values
                 self.current_label = Some(label_ptr);
 
                 self.content
                     .push_str(&self.ident(format!("if({cond}){{\n")));
                 self.increase_identation();
-                self.emit_node(then_node, cfg, ir, emitted);
+                let then_args = &term_instruction.operands[1..1 + then_arg_count];
+                let compiled_then = self.compile_values(then_args, ir);
+                self.current_label = Some(label_ptr);
+                for (i, val) in compiled_then.into_iter().enumerate() {
+                    let var = self.label_arg_var(*then_label, i, ir);
+                    self.content
+                        .push_str(&self.ident(format!("{var} = {val};\n")));
+                }
+                if let Some(then_node) = then_node {
+                    self.emit_node(then_node, cfg, ir, emitted);
+                }
                 self.decrease_identation();
                 self.content.push_str(&self.ident("} else {\n".to_string()));
                 self.increase_identation();
-                self.emit_node(else_node, cfg, ir, emitted);
+                let else_args = &term_instruction.operands[1 + then_arg_count..];
+                let compiled_else = self.compile_values(else_args, ir);
+                self.current_label = Some(label_ptr);
+                for (i, val) in compiled_else.into_iter().enumerate() {
+                    let var = self.label_arg_var(*else_label, i, ir);
+                    self.content
+                        .push_str(&self.ident(format!("{var} = {val};\n")));
+                }
+                if let Some(else_node) = else_node {
+                    self.emit_node(else_node, cfg, ir, emitted);
+                }
                 self.decrease_identation();
                 self.content.push_str(&self.ident("}\n".to_string()));
             }
@@ -164,6 +267,30 @@ impl JSFunction {
                 self.content.push_str(&self.ident(s));
             }
         }
+    }
+
+    /// Declares JS variables for a label's block arguments if they have not
+    /// been declared yet. The declaration is emitted at the current scope.
+    fn ensure_label_args(&mut self, label: IRPointer<Label, 1>, ir: &SlynxIR) {
+        let count = ir.get_view(label).arguments().len();
+        for index in 0..count {
+            self.label_arg_var(label, index, ir);
+        }
+    }
+
+    fn label_arg_var(
+        &mut self,
+        label: IRPointer<Label, 1>,
+        index: usize,
+        _ir: &SlynxIR,
+    ) -> String {
+        if let Some(var) = self.label_args.get(&(label, index)) {
+            return var.clone();
+        }
+        let var = format!("v{}", self.variables.len() + self.label_args.len() + 1);
+        self.content.push_str(&self.ident(format!("let {var};\n")));
+        self.label_args.insert((label, index), var.clone());
+        var
     }
 
     fn find_end_label(
@@ -196,19 +323,13 @@ impl JSFunction {
     fn is_expression(opcode: &Opcode, value_type: IRTypeId, ir: &SlynxIR) -> bool {
         match opcode {
             Opcode::Component => {
-                value_type != ir.specialized_text_type() && value_type != ir.specialized_div_type()
+                value_type != ir.types.specialized_text_type()
+                    && value_type != ir.types.specialized_div_type()
             }
-            Opcode::Call(_) | Opcode::InitCall(_) => value_type != ir.void_type(),
-            _ => !matches!(
-                opcode,
-                Opcode::Allocate
-                    | Opcode::Write
-                    | Opcode::SetField(_)
-                    | Opcode::SApply { .. }
-                    | Opcode::Br(_)
-                    | Opcode::Cbr { .. }
-                    | Opcode::Ret
-            ),
+            // Calls are handled by `emit_deferred`, which decides whether they
+            // are emitted as statements, inlined, or materialized.
+            Opcode::Call(_) | Opcode::DynMethodCall(_) | Opcode::InitCall(_) => false,
+            _ => !opcode.is_impure(),
         }
     }
 
