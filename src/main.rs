@@ -42,7 +42,7 @@ impl CompilationPhase {
         for mut file in self.included_files {
             file.read_to_string(&mut out)?;
         }
-        let ir = slynx::compile_to_ir(self.target)?;
+        let ir = slynx::compile_to_ir(self.target, None)?;
         if print {
             println!("{}", ir.format_sir());
         }
