@@ -1,0 +1,34 @@
+object S {
+    value: sint32,
+
+    func empty(): Self {
+        Self(value: 0)
+    }
+
+    func update(&mut self, n: sint32): void {
+        self.value = n;
+    }
+}
+
+component Text {
+    pub prop value: S = S.empty();
+
+    pub func update(&mut self, n: sint32): void {
+        self.value.update(n);
+    }
+}
+
+component Main {
+    pub prop id: sint32 = 9;
+    text=Text {}
+
+    pub func update(&mut self, n: sint32): void {
+        self.text.update(n);
+    }
+}
+
+func main(): Main {
+    let mut main = Main {};
+    main.update(5);
+    return main;
+}
